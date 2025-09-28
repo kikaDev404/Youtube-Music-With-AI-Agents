@@ -6,6 +6,7 @@ import requests
 import functools
 from langchain.agents import Tool
 from typing import Annotated
+from langchain.tools import StructuredTool
 
 load_dotenv(override=True)
 
@@ -80,6 +81,7 @@ class Authenticated:
                 album_name = album_info.get("name", "") if isinstance(album_info, dict) else ""
                 
                 song_entry = {
+                    "song_id": item.get("videoId", ""),
                     "title": item.get("title", ""),
                     "duration": item.get("duration", ""),
                     "artists": [a["name"] for a in item.get("artists", [])] if isinstance(item.get("artists"), list) else [],
@@ -88,10 +90,31 @@ class Authenticated:
                 songs.append(song_entry)
         return songs
     
-    def add_song_to_playlist(self, playlist_id : str, song_id : list):
-        """ use this tool to add songs to a playlist. pass the playlist id and song id or video id to the tool"""
-        add_to_playlist = self.yt.add_playlist_items(playlistId=playlist_id, videoIds=song_id)
-        return add_to_playlist
+    def add_song_to_playlist(self, playlist_id: str, song_id: list[str]):
+        """
+        Use this tool to add songs to a YouTube Music playlist.
+
+        Parameters:
+            playlist_id (str): The ID of the playlist where songs should be added.
+            song_id (list[str]): A list of song IDs (videoIds) to add. 
+                                You can pass one or multiple IDs.
+
+        Returns:
+            dict: A response from YouTube Music API containing:
+                - status: "STATUS_SUCCEEDED" if successful
+                - setVideoId: mapping of added videoIds
+                - or error details if failed
+        """
+        return self.yt.add_playlist_items(
+            playlistId=playlist_id,
+            videoIds=song_id
+        )
+    
+    def create_new_playlist(self, playlist_name : str, playlist_description : str, song_id : list):
+        """use this tool to add songs to the playlist. pass a playlist name and its description. also pass the song id to add to the playlist"""
+        create_playlist = self.yt.create_playlist(title=playlist_name, description=playlist_description, video_ids=song_id)
+        return create_playlist
+    
 
 
 
@@ -107,7 +130,19 @@ class Authenticated:
             func=self.search_autenticated
         )
 
-        return [get_lib_playlist, yt_search]
+        add_to_playlist = StructuredTool.from_function(
+        name = 'add_to_playlist',
+        description= 'use this tool to add a song to user playlist. you need to pass the playlist id and the song id or video id to the tool',
+        func= self.add_song_to_playlist
+        )
+
+        create_playlist = StructuredTool.from_function(
+            name = 'create_playlist',
+            description= 'use this tool to create a new playlist for the user in youtube music. you need to pass a playlist name (any name you like if user not mentioned a specific name), a playlist description and the id of the songs to be added to the new playlist',
+            func= self.create_new_playlist
+        )
+
+        return [get_lib_playlist, yt_search, add_to_playlist,create_playlist]
 
 
 
